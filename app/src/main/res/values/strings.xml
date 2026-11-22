@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">CODM Stealth</string>
+    <string name="vpn_channel_name">CODM Stealth Tunnel</string>
+    <string name="vpn_channel_description">Active status for AmneziaWG stealth tunnel and Rust DoH Turbo DNS engine</string>
+    <string name="doh_notification_title">DoH Turbo DNS Active</string>
+    <string name="doh_notification_text">Encrypted RFC 8484 DNS active with zero game-packet overhead</string>
+    <string name="awg_notification_title">AmneziaWG Stealth Active</string>
+    <string name="awg_notification_text">Anti-DPI stealth tunnel active for Call of Duty: Mobile</string>
+    <string name="action_disconnect">Disconnect</string>
+</resources>

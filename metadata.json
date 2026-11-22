@@ -1,0 +1,6 @@
+{
+  "name": "CODM Stealth",
+  "description": "AmneziaWG stealth tunnel, Rust DoH RFC 8484 DNS engine, and C++20 ADPF hardware booster for Call of Duty: Mobile.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
