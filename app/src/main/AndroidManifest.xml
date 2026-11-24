@@ -51,10 +51,11 @@
         </service>
 
         <service
-            android:name="org.amnezia.awg.backend.GoBackend$VpnService"
+            android:name="org.amnezia.awg.backend.AbstractBackend$VpnService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
-            android:permission="android.permission.BIND_VPN_SERVICE">
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            tools:node="merge">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>

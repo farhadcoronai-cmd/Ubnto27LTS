@@ -344,7 +344,9 @@ class BoosterViewModel(application: Application) : AndroidViewModel(application)
                             _shockwaveKey.value += 1
                             _statusMessage.value = "تونل مخفی AmneziaWG (${profile.name}) متصل شد."
                         }.onFailure { err ->
-                            _statusMessage.value = "خطای اتصال AmneziaWG: ${err.message}"
+                            val detail = err.message?.takeIf { it.isNotBlank() }
+                                ?: err.javaClass.simpleName
+                            _statusMessage.value = "خطای اتصال AmneziaWG: $detail"
                         }
                     }
                 }
@@ -434,12 +436,10 @@ class BoosterViewModel(application: Application) : AndroidViewModel(application)
             Jmax = 70
             S1 = 42
             S2 = 64
-            S3 = 32
-            S4 = 16
-            H1 = 100000-200000
-            H2 = 200001-300000
-            H3 = 300001-400000
-            H4 = 400001-500000
+            H1 = 100001
+            H2 = 200001
+            H3 = 300001
+            H4 = 400001
             I1 = <b 0xc0a80101><t><r 16>
 
             [Peer]
