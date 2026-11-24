@@ -9,8 +9,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  ANDROID_NDK_VERSION: "27.0.12077973" # در صورت نیاز نسخه NDK پروژه خود را تنظیم کنید
+  ANDROID_NDK_VERSION: "27.0.12077973" # در صورت نیاز نسخه NDK را تنظیم کنید
   RUST_VERSION: "stable"
+  # مسیر پوشه‌ای که فایل Cargo.toml در آن قرار دارد را اینجا وارد کنید
+  RUST_PROJECT_PATH: "." 
 
 jobs:
   build:
@@ -18,35 +20,29 @@ jobs:
     timeout-minutes: 45
 
     steps:
-    # 1. دریافت کدهای مخزن
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2. راه‌اندازی JDK 17
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 3. راه‌اندازی Android SDK با نسخه جدید (رفع خطای tools)
     - name: Setup Android SDK
       uses: android-actions/setup-android@v4.0.4
 
-    # 4. نصب NDK و تنظیم متغیر محیطی
     - name: Install Android NDK
       run: |
         yes | sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
 
-    # 5. راه‌اندازی Rust و افزودن تارگت‌های اندروید
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ env.RUST_VERSION }}
         targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
 
-    # 6. کش کردن وابستگی‌های Cargo برای افزایش سرعت
     - name: Cache Cargo dependencies
       uses: actions/cache@v4
       with:
@@ -58,12 +54,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    # 7. نصب cargo-ndk
     - name: Install cargo-ndk
       run: cargo install cargo-ndk --locked
 
-    # 8. کراس‌کامپایل کد Rust برای معماری‌های اندروید
+    # --- این مرحله اصلاح شد ---
     - name: Build Rust library
+      working-directory: ${{ env.RUST_PROJECT_PATH }} # مسیر پروژه Rust را اینجا تنظیم کنید
       run: |
         cargo ndk \
           -t arm64-v8a \
@@ -71,16 +67,14 @@ jobs:
           -t x86_64 \
           --platform 24 \
           build --release
+    # -------------------------
 
-    # 9. اعطای مجوز اجرا به Gradle Wrapper
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # 10. ساخت فایل APK (دیباگ)
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    # 11. آپلود APK خروجی
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
