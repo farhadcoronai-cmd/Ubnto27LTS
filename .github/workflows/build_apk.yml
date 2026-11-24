@@ -28,7 +28,6 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    # ✅ این مرحله Gradle را نصب می‌کند تا به فایل gradlew نیازی نداشته باشیم
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
@@ -71,9 +70,23 @@ jobs:
           --platform 24 \
           build --release
 
-    # ✅ حالا به جای ./gradlew از خود دستور gradle استفاده می‌کنیم
+    # ✅ مرحله جدید: ساخت خودکار فایل debug.keystore برای CI
+    - name: Generate Debug Keystore
+      run: |
+        keytool -genkeypair -v \
+          -keystore "${RUNNER_TEMP}/debug.keystore" \
+          -storepass android -keypass android \
+          -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+          -dname "CN=Android Debug,O=Android,C=US"
+
+    # ✅ مرحله اصلاح‌شده: پاس دادن مسیر keystore به Gradle
     - name: Build Debug APK
-      run: gradle assembleDebug
+      run: |
+        gradle assembleDebug \
+          -Pandroid.injected.signing.store.file="${RUNNER_TEMP}/debug.keystore" \
+          -Pandroid.injected.signing.store.password=android \
+          -Pandroid.injected.signing.key.alias=androiddebugkey \
+          -Pandroid.injected.signing.key.password=android
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
