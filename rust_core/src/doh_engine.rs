@@ -321,17 +321,26 @@ async fn handle_dns_packet(
     });
 
     // 1. Check TTL-aware LRU DNS cache
-    if let Some(ref key) = cache_key {
-        if let Ok(mut guard) = state.cache.lock() {
-            if let Some(cached_wire) = guard.get(key, query_id) {
-                state.cache_hits.fetch_add(1, Ordering::Relaxed);
-                state.last_rtt_us.store(0, Ordering::Relaxed);
-                let reply_pkt = build_ipv4_udp_reply(&pkt, &cached_wire);
-                write_packet_to_tun(&async_tun, &reply_pkt).await;
-                return;
-            }
+if let Some(ref key) = cache_key {
+    let mut cached_wire_opt = None;
+    
+    // قفل رو می‌گیریم
+    if let Ok(mut guard) = state.cache.lock() {
+        if let Some(cached_wire) = guard.get(key, query_id) {
+            state.cache_hits.fetch_add(1, Ordering::Relaxed);
+            state.last_rtt_us.store(0, Ordering::Relaxed);
+            cached_wire_opt = Some(cached_wire);
         }
+    } // 👈 اینجا قفل (guard) به صورت خودکار آزاد میشه
+
+    // حالا که قفل آزاد شده، میریم سراغ await
+    if let Some(cached_wire) = cached_wire_opt {
+        let reply_pkt = build_ipv4_udp_reply(&pkt, &cached_wire);
+        write_packet_to_tun(&async_tun, &reply_pkt).await;
+        return;
     }
+}
+    
 
     state.cache_misses.fetch_add(1, Ordering::Relaxed);
 
