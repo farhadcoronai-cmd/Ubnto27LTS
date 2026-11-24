@@ -1,33 +1,24 @@
-name: Build CODM Stealth Debug APK
+name: Build Rust + C++20 NDK + Android APK
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
-jobs:
-  build-apk:
-    name: Build Rust + C++20 NDK + Android APK
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
+env:
+  NDK_VERSION: "27.2.12479018"   # NDK r27c
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Unpack codm-stealth.zip if uploaded as archive
-        run: |
-          if [ -f codm-stealth.zip ]; then
-            unzip -oq codm-stealth.zip -x ".github/*" "*/.github/*"
-            if [ ! -f settings.gradle.kts ]; then
-              SUBDIR=$(find . -maxdepth 2 -name "settings.gradle.kts" -exec dirname {} \; | head -n 1)
-              if [ -n "$SUBDIR" ] && [ "$SUBDIR" != "." ]; then
-                cp -rf "$SUBDIR"/. .
-                rm -rf "$SUBDIR"
-              fi
-            fi
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -35,61 +26,95 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android NDK r26, CMake 3.22.1, and Android 36 SDK
-        run: |
-          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
-          SDKMGR=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n 1)
-          yes | "$SDKMGR" --licenses > /dev/null || true
-          "$SDKMGR" --install "ndk;26.3.11579264" "cmake;3.22.1" "platforms;android-36" "build-tools;35.0.0"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Set up Rust toolchain with Android targets
+      - name: Install NDK + platform + build-tools
+        run: yes | sdkmanager --install "ndk;${NDK_VERSION}" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1"
+
+      - name: Install Rust + Android targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
-      - name: Build Rust Core (16KB ELF Page Alignment)
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.3.11579264
-          RUSTFLAGS: "-C link-arg=-Wl,-z,max-page-size=16384"
+      # 🔍 فیکس ارور قبلی: خودش Cargo.toml رو هرجای ریپو که باشه پیدا می‌کنه
+      - name: Locate Rust crate
+        id: crate
         run: |
+          MANIFEST=$(find . -name Cargo.toml -not -path "*/target/*" -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$MANIFEST" ]; then
+            echo "::error::Cargo.toml توی ریپو نیست! اول commit و pushش کن."
+            exit 1
+          fi
+          echo "dir=$(dirname "$MANIFEST")" >> "$GITHUB_OUTPUT"
+          echo "Crate found at: $(dirname "$MANIFEST")"
+
+      - name: Build Rust Core (16KB ELF Page Alignment)
+        working-directory: ${{ steps.crate.outputs.dir }}
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
           cargo ndk \
             -t arm64-v8a \
             -t armeabi-v7a \
             -t x86_64 \
-            -p 24 \
-            -o app/src/main/jniLibs \
-            build --manifest-path rust_core/Cargo.toml --release
+            -o "$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+            build --release
+
+      # 🧩 اگه پوشه native/ نداشته باشی، خودکار رد می‌شه
+      - name: Build C++20 Core (optional)
+        run: |
+          if [ ! -d native ]; then echo "native/ not found, skipping"; exit 0; fi
+          BIN="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            case "$ABI" in
+              arm64-v8a)   TRIPLE=aarch64-linux-android21 ;;
+              armeabi-v7a) TRIPLE=armv7a-linux-androideabi21 ;;
+              x86_64)      TRIPLE=x86_64-linux-android21 ;;
+            esac
+            mkdir -p "app/src/main/jniLibs/$ABI"
+            "$BIN/clang++" --target="$TRIPLE" -std=c++20 -O2 -fPIC -shared \
+              -Wl,-z,max-page-size=16384 \
+              native/*.cpp -o "app/src/main/jniLibs/$ABI/libnative.so"
+          done
+
+      # ✅ چک الاینمنت: ستون Align باید 0x4000 باشه (= 16KB)
+      - name: Verify 16KB alignment
+        run: |
+          READELF="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          find app/src/main/jniLibs -name "*.so" | while read -r so; do
+            echo "== $so"
+            "$READELF" -l "$so" | grep LOAD
+          done
 
       - name: Prepare debug keystore
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
+          mkdir -p ~/.android
+          keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
 
       - name: Build Debug APK
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.3.11579264
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon
-          else
-            gradle assembleDebug --no-daemon
-          fi
+          GW=$(find . -name gradlew -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$GW" ]; then echo "::error::gradlew پیدا نشد!"; exit 1; fi
+          chmod +x "$GW"
+          cd "$(dirname "$GW")"
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: codm-stealth-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: debug-apk
+          path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
