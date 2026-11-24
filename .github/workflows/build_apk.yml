@@ -5,11 +5,11 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # امکان اجرای دستی از تب Actions
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  ANDROID_NDK_VERSION: "27.0.12077973" # نسخه NDK را مطابق نیاز پروژه خود تغییر دهید (مثلاً 26.3.11579264)
+  ANDROID_NDK_VERSION: "27.0.12077973" # در صورت نیاز نسخه NDK پروژه خود را تنظیم کنید
   RUST_VERSION: "stable"
 
 jobs:
@@ -22,31 +22,31 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2. راه‌اندازی JDK 17 (برای Gradle و ابزارهای اندروید)
+    # 2. راه‌اندازی JDK 17
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 3. راه‌اندازی Android SDK و نصب خودکار sdkmanager
+    # 3. راه‌اندازی Android SDK با نسخه جدید (رفع خطای tools)
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      uses: android-actions/setup-android@v4.0.4
 
-    # 4. نصب نسخه مشخصی از NDK (اختیاری اما توصیه‌شده برای پایداری)
+    # 4. نصب NDK و تنظیم متغیر محیطی
     - name: Install Android NDK
       run: |
         yes | sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
 
-    # 5. راه‌اندازی Rust و اضافه کردن تارگت‌های اندروید
+    # 5. راه‌اندازی Rust و افزودن تارگت‌های اندروید
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ env.RUST_VERSION }}
         targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
 
-    # 6. کش کردن وابستگی‌های Cargo (جهت سرعت بخشیدن به بیلدهای بعدی)
+    # 6. کش کردن وابستگی‌های Cargo برای افزایش سرعت
     - name: Cache Cargo dependencies
       uses: actions/cache@v4
       with:
@@ -54,18 +54,15 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cargo/bin
-          ~/.cargo/.crates.toml
-          ~/.cargo/.crates2.json
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    # 7. نصب cargo-ndk (ابزار ضروری برای کراس‌کامپایل Rust به اندروید)
+    # 7. نصب cargo-ndk
     - name: Install cargo-ndk
-      run: |
-        cargo install cargo-ndk --locked
+      run: cargo install cargo-ndk --locked
 
-    # 8. بیلد کردن کتابخانه Rust برای معماری‌های اندروید
+    # 8. کراس‌کامپایل کد Rust برای معماری‌های اندروید
     - name: Build Rust library
       run: |
         cargo ndk \
@@ -75,15 +72,15 @@ jobs:
           --platform 24 \
           build --release
 
-    # 9. اعطای دسترسی اجرا به Gradle Wrapper
+    # 9. اعطای مجوز اجرا به Gradle Wrapper
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # 10. بیلد کردن APK با استفاده از Gradle
+    # 10. ساخت فایل APK (دیباگ)
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    # 11. آپلود APK خروجی به عنوان آرتیفکت
+    # 11. آپلود APK خروجی
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
