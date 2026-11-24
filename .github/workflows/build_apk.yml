@@ -9,10 +9,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  ANDROID_NDK_VERSION: "27.0.12077973" # در صورت نیاز نسخه NDK را تنظیم کنید
+  ANDROID_NDK_VERSION: "27.0.12077973"
   RUST_VERSION: "stable"
-  # مسیر پوشه‌ای که فایل Cargo.toml در آن قرار دارد را اینجا وارد کنید
-  RUST_PROJECT_PATH: "." 
+  # ⚠️ مسیر پوشه‌ای که فایل Cargo.toml در آن قرار دارد را اینجا وارد کنید
+  # مثال: اگر Cargo.toml در پوشه rust است، بنویسید: "rust"
+  RUST_PROJECT_PATH: "rust" 
 
 jobs:
   build:
@@ -57,9 +58,8 @@ jobs:
     - name: Install cargo-ndk
       run: cargo install cargo-ndk --locked
 
-    # --- این مرحله اصلاح شد ---
     - name: Build Rust library
-      working-directory: ${{ env.RUST_PROJECT_PATH }} # مسیر پروژه Rust را اینجا تنظیم کنید
+      working-directory: ${{ env.RUST_PROJECT_PATH }} # استفاده از متغیر مسیر
       run: |
         cargo ndk \
           -t arm64-v8a \
@@ -67,7 +67,6 @@ jobs:
           -t x86_64 \
           --platform 24 \
           build --release
-    # -------------------------
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
